@@ -1,0 +1,33 @@
+model_name: gpt_tiny
+run_name: gpt_tiny
+vocab_size: auto
+block_size: 128
+n_layer: 4
+n_head: 4
+n_embd: 128
+dropout: 0.1
+
+batch_size: 32
+gradient_accumulation_steps: 1
+max_iters: 2000
+eval_interval: 100
+eval_iters: 50
+log_interval: 10
+
+learning_rate: 0.0003
+min_lr: 0.00003
+warmup_iters: 100
+weight_decay: 0.1
+beta1: 0.9
+beta2: 0.95
+grad_clip: 1.0
+seed: 1337
+
+device: auto
+amp: false
+torch_compile: false
+activation_checkpointing: false
+
+data_dir: data/processed
+results_dir: results
+checkpoint_dir: checkpoints

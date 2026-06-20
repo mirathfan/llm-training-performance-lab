@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+data/raw/
+data/processed/
+checkpoints/*.pt
+results/*/
+results/*.json
+results/*.csv
+results/*.png
+results/profiler/
+.DS_Store
+
+!results/.gitkeep
+!checkpoints/.gitkeep
