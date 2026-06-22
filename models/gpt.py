@@ -18,6 +18,7 @@ class GPTConfig:
     n_embd: int
     dropout: float = 0.1
     activation_checkpointing: bool = False
+    attention_backend: str = "manual"
 
 
 class GPT(nn.Module):
@@ -32,7 +33,13 @@ class GPT(nn.Module):
         self.dropout = nn.Dropout(config.dropout)
         self.blocks = nn.ModuleList(
             [
-                TransformerBlock(config.n_embd, config.n_head, config.block_size, config.dropout)
+                TransformerBlock(
+                    config.n_embd,
+                    config.n_head,
+                    config.block_size,
+                    config.dropout,
+                    config.attention_backend,
+                )
                 for _ in range(config.n_layer)
             ]
         )

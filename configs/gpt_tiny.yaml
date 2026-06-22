@@ -6,6 +6,7 @@ n_layer: 4
 n_head: 4
 n_embd: 128
 dropout: 0.1
+attention_backend: manual
 
 batch_size: 32
 gradient_accumulation_steps: 1
