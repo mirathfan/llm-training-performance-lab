@@ -72,6 +72,7 @@ Smoke training was run for 20 iterations with `configs/gpt_tiny.yaml` and AMP on
 - Best batch-scaling result was AMP batch 64 / seq 128 at 375,771.54 tokens/sec.
 - Best sequence-scaling result was AMP batch 32 / seq 256 at 354,869.84 tokens/sec.
 - BF16 + fused AdamW was tested after the initial optimization benchmark to complete the `gpt_small` optimization matrix, producing the new best `gpt_small` result at 135,606.99 +/- 1,563.28 tokens/sec and 2.67x speedup over baseline.
+- A WSL2 Ubuntu validation run reached 142,371.64 +/- 817.19 tokens/sec with the BF16 + fused AdamW stack, but `torch.compile` itself failed because Python development headers were missing.
 - `torch.compile` failed on this Windows setup because Triton was missing, so compiled results are recorded as unavailable instead of fabricated.
 
 ## Benchmark Results
@@ -146,31 +147,44 @@ These `gpt_tiny` optimization results were generated before the BF16 + fused Ada
 
 ### gpt_small Optimization Results
 
+These `gpt_small` results are from the WSL2 Ubuntu validation run with PyTorch 2.12.1+cu130. The compile stage failed, so no `torch.compile` speedup is claimed.
+
 | optimization stage | status | precision | attention | tokens/sec mean +/- std | step ms mean +/- std | max memory MB mean +/- std | speedup |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| baseline_fp32_manual | ok | fp32 | manual | 50769.52 +/- 615.14 | 80.69 +/- 0.98 | 1120.49 +/- 1.63 | 1.00x |
-| tf32_manual | ok | fp32 | manual | 67324.47 +/- 298.66 | 60.84 +/- 0.27 | 1120.07 +/- 0.25 | 1.33x |
-| tf32_sdpa | ok | fp32 | sdpa | 78726.20 +/- 266.05 | 52.03 +/- 0.18 | 795.95 +/- 2.81 | 1.55x |
-| tf32_sdpa_fp16 | ok | fp16 | sdpa | 126008.84 +/- 444.65 | 32.51 +/- 0.11 | 553.17 +/- 1.92 | 2.48x |
-| tf32_sdpa_bf16 | ok | bf16 | sdpa | 125467.02 +/- 2849.93 | 32.66 +/- 0.74 | 551.66 +/- 2.96 | 2.47x |
-| tf32_sdpa_fp16_fused_adamw | ok | fp16 | sdpa | 133410.04 +/- 2083.13 | 30.71 +/- 0.48 | 551.62 +/- 0.36 | 2.63x |
-| tf32_sdpa_bf16_fused_adamw | ok | bf16 | sdpa | 135606.99 +/- 1563.28 | 30.21 +/- 0.35 | 551.83 +/- 1.79 | 2.67x |
-| tf32_sdpa_bf16_fused_adamw_compile | failed: Triton missing | bf16 | sdpa | unavailable | unavailable | unavailable | unavailable |
+| baseline_fp32_manual | ok | fp32 | manual | 51215.04 +/- 533.42 | 79.98 +/- 0.83 | 1119.76 +/- 1.23 | 1.00x |
+| tf32_manual | ok | fp32 | manual | 66311.93 +/- 468.99 | 61.77 +/- 0.44 | 1119.18 +/- 0.00 | 1.29x |
+| tf32_sdpa | ok | fp32 | sdpa | 75524.40 +/- 3357.42 | 54.31 +/- 2.48 | 795.30 +/- 2.50 | 1.47x |
+| tf32_sdpa_fp16 | ok | fp16 | sdpa | 127009.41 +/- 1530.51 | 32.25 +/- 0.39 | 549.92 +/- 1.15 | 2.48x |
+| tf32_sdpa_bf16 | ok | bf16 | sdpa | 135160.43 +/- 3131.37 | 30.32 +/- 0.70 | 552.67 +/- 1.25 | 2.64x |
+| tf32_sdpa_fp16_fused_adamw | ok | fp16 | sdpa | 137228.75 +/- 1329.44 | 29.85 +/- 0.29 | 552.79 +/- 0.00 | 2.68x |
+| tf32_sdpa_bf16_fused_adamw | ok | bf16 | sdpa | 142371.64 +/- 817.19 | 28.77 +/- 0.16 | 552.79 +/- 0.00 | 2.78x |
+| tf32_sdpa_bf16_fused_adamw_compile | failed: missing Python.h | bf16 | sdpa | unavailable | unavailable | unavailable | unavailable |
 
 ## Optimization Findings
 
 - Fastest `gpt_tiny` stage: `tf32_sdpa` at 299150.60 +/- 12641.55 tokens/sec, a 1.29x speedup over baseline.
-- Fastest `gpt_small` stage: `tf32_sdpa_bf16_fused_adamw` at 135606.99 +/- 1563.28 tokens/sec, a 2.67x speedup over baseline.
+- Fastest WSL2 `gpt_small` stage: `tf32_sdpa_bf16_fused_adamw` at 142371.64 +/- 817.19 tokens/sec, a 2.78x speedup over baseline.
 - Lowest `gpt_tiny` memory: `tf32_sdpa_bf16` at 121.72 +/- 0.00 MB, a 127.55 MB reduction from the 249.27 MB baseline.
-- Lowest `gpt_small` memory: `tf32_sdpa_fp16_fused_adamw` at 551.62 +/- 0.36 MB, a 568.87 MB reduction from the 1120.49 MB baseline.
+- Lowest WSL2 `gpt_small` memory: `tf32_sdpa_fp16` at 549.92 +/- 1.15 MB, a 569.84 MB reduction from the 1119.76 MB baseline.
 - SDPA improved both throughput and memory versus the corresponding TF32 manual-attention stage in both configs.
-- FP16 and BF16 reduced memory in both configs. For `gpt_tiny`, they did not beat the TF32+SDPA throughput result. For the refreshed `gpt_small` run, FP16 and BF16 both improved throughput over TF32+SDPA, with FP16 slightly ahead of plain BF16.
-- Fused AdamW improved throughput versus the matching non-fused precision stages in the refreshed `gpt_small` run. BF16 + fused AdamW beat both plain BF16 and FP16 + fused AdamW in this run.
-- `torch.compile` remained unavailable on this Windows setup because Triton was missing, so compiled results are recorded as failed rather than treated as a speedup.
+- FP16 and BF16 reduced memory in both configs. For `gpt_tiny`, they did not beat the TF32+SDPA throughput result. For the WSL2 `gpt_small` run, FP16 and BF16 both improved throughput over TF32+SDPA, with plain BF16 ahead of plain FP16.
+- Fused AdamW improved throughput versus the matching non-fused precision stages in the WSL2 `gpt_small` run. BF16 + fused AdamW beat both plain BF16 and FP16 + fused AdamW in this run.
+- Compared with the previous Windows BF16 + fused AdamW result of 135606.99 +/- 1563.28 tokens/sec and 2.67x, the WSL2 non-compiled BF16 + fused AdamW result reached 142371.64 +/- 817.19 tokens/sec and 2.78x. This is a WSL2 non-compiled result, not a `torch.compile` result.
+- `torch.compile` remained unavailable. It failed on Windows because Triton was missing, and the WSL2 compile smoke test failed because `Python.h` was missing from the Python development headers.
 
-## Optional WSL2 torch.compile validation
+## WSL2 torch.compile validation
 
-`torch.compile` failed on Windows because Triton was unavailable. WSL2/Linux is the intended environment for validating `torch.compile` on this project. Add results to this README only after the WSL2 benchmark actually runs successfully.
+WSL2 validation was run on Ubuntu under WSL2 with Python 3.12.3, PyTorch 2.12.1+cu130, CUDA 13.0 as reported by PyTorch, and an NVIDIA GeForce RTX 3060 Laptop GPU.
+
+CUDA was available in WSL2, but the `torch.compile` smoke test failed. The key compiler error was:
+
+```text
+fatal error: Python.h: No such file or directory
+```
+
+The benchmark compile stage also failed with a `CalledProcessError` from `/usr/bin/gcc` while compiling Triton's `cuda_utils.c` helper against `/usr/include/python3.12`. Because the compile stage did not run successfully, no WSL2 `torch.compile` speedup is reported.
+
+To retry after installing Python development headers in WSL2, use:
 
 ```bash
 cd ~/llm-training-performance-lab
