@@ -71,6 +71,7 @@ Smoke training was run for 20 iterations with `configs/gpt_tiny.yaml` and AMP on
 - AMP reduced memory usage in this setting, but did not outperform FP32 at the small benchmark size.
 - Best batch-scaling result was AMP batch 64 / seq 128 at 375,771.54 tokens/sec.
 - Best sequence-scaling result was AMP batch 32 / seq 256 at 354,869.84 tokens/sec.
+- BF16 + fused AdamW was tested after the initial optimization benchmark to complete the `gpt_small` optimization matrix, producing the new best `gpt_small` result at 135,606.99 +/- 1,563.28 tokens/sec and 2.67x speedup over baseline.
 - `torch.compile` failed on this Windows setup because Triton was missing, so compiled results are recorded as unavailable instead of fabricated.
 
 ## Benchmark Results
@@ -131,6 +132,8 @@ BF16 is tested only when `torch.cuda.is_bf16_supported()` returns true. BF16 per
 
 ### gpt_tiny Optimization Results
 
+These `gpt_tiny` optimization results were generated before the BF16 + fused AdamW stage was added.
+
 | optimization stage | status | precision | attention | tokens/sec mean +/- std | step ms mean +/- std | max memory MB mean +/- std | speedup |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
 | baseline_fp32_manual | ok | fp32 | manual | 231516.45 +/- 5646.74 | 17.70 +/- 0.43 | 249.27 +/- 0.00 | 1.00x |
@@ -145,24 +148,39 @@ BF16 is tested only when `torch.cuda.is_bf16_supported()` returns true. BF16 per
 
 | optimization stage | status | precision | attention | tokens/sec mean +/- std | step ms mean +/- std | max memory MB mean +/- std | speedup |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| baseline_fp32_manual | ok | fp32 | manual | 50598.83 +/- 1148.95 | 80.98 +/- 1.86 | 1120.49 +/- 1.63 | 1.00x |
-| tf32_manual | ok | fp32 | manual | 66797.40 +/- 1062.35 | 61.33 +/- 0.97 | 1120.07 +/- 0.25 | 1.32x |
-| tf32_sdpa | ok | fp32 | sdpa | 78109.80 +/- 216.95 | 52.44 +/- 0.15 | 795.95 +/- 2.81 | 1.54x |
-| tf32_sdpa_fp16 | ok | fp16 | sdpa | 124563.32 +/- 900.87 | 32.88 +/- 0.24 | 553.17 +/- 1.92 | 2.46x |
-| tf32_sdpa_bf16 | ok | bf16 | sdpa | 130045.08 +/- 605.88 | 31.50 +/- 0.15 | 551.66 +/- 2.96 | 2.57x |
-| tf32_sdpa_fp16_fused_adamw | ok | fp16 | sdpa | 128702.92 +/- 1638.66 | 31.83 +/- 0.40 | 551.62 +/- 0.36 | 2.54x |
-| tf32_sdpa_fp16_fused_adamw_compile | failed: Triton missing | fp16 | sdpa | unavailable | unavailable | unavailable | unavailable |
+| baseline_fp32_manual | ok | fp32 | manual | 50769.52 +/- 615.14 | 80.69 +/- 0.98 | 1120.49 +/- 1.63 | 1.00x |
+| tf32_manual | ok | fp32 | manual | 67324.47 +/- 298.66 | 60.84 +/- 0.27 | 1120.07 +/- 0.25 | 1.33x |
+| tf32_sdpa | ok | fp32 | sdpa | 78726.20 +/- 266.05 | 52.03 +/- 0.18 | 795.95 +/- 2.81 | 1.55x |
+| tf32_sdpa_fp16 | ok | fp16 | sdpa | 126008.84 +/- 444.65 | 32.51 +/- 0.11 | 553.17 +/- 1.92 | 2.48x |
+| tf32_sdpa_bf16 | ok | bf16 | sdpa | 125467.02 +/- 2849.93 | 32.66 +/- 0.74 | 551.66 +/- 2.96 | 2.47x |
+| tf32_sdpa_fp16_fused_adamw | ok | fp16 | sdpa | 133410.04 +/- 2083.13 | 30.71 +/- 0.48 | 551.62 +/- 0.36 | 2.63x |
+| tf32_sdpa_bf16_fused_adamw | ok | bf16 | sdpa | 135606.99 +/- 1563.28 | 30.21 +/- 0.35 | 551.83 +/- 1.79 | 2.67x |
+| tf32_sdpa_bf16_fused_adamw_compile | failed: Triton missing | bf16 | sdpa | unavailable | unavailable | unavailable | unavailable |
 
 ## Optimization Findings
 
 - Fastest `gpt_tiny` stage: `tf32_sdpa` at 299150.60 +/- 12641.55 tokens/sec, a 1.29x speedup over baseline.
-- Fastest `gpt_small` stage: `tf32_sdpa_bf16` at 130045.08 +/- 605.88 tokens/sec, a 2.57x speedup over baseline.
+- Fastest `gpt_small` stage: `tf32_sdpa_bf16_fused_adamw` at 135606.99 +/- 1563.28 tokens/sec, a 2.67x speedup over baseline.
 - Lowest `gpt_tiny` memory: `tf32_sdpa_bf16` at 121.72 +/- 0.00 MB, a 127.55 MB reduction from the 249.27 MB baseline.
 - Lowest `gpt_small` memory: `tf32_sdpa_fp16_fused_adamw` at 551.62 +/- 0.36 MB, a 568.87 MB reduction from the 1120.49 MB baseline.
 - SDPA improved both throughput and memory versus the corresponding TF32 manual-attention stage in both configs.
-- FP16 and BF16 reduced memory in both configs. For `gpt_tiny`, they did not beat the TF32+SDPA throughput result. For `gpt_small`, both FP16 and BF16 improved throughput over TF32+SDPA, with BF16 fastest in this run.
-- Fused AdamW improved throughput versus the FP16 SDPA stage in both configs, but it was not the fastest `gpt_tiny` stage and did not beat BF16 on `gpt_small`.
+- FP16 and BF16 reduced memory in both configs. For `gpt_tiny`, they did not beat the TF32+SDPA throughput result. For the refreshed `gpt_small` run, FP16 and BF16 both improved throughput over TF32+SDPA, with FP16 slightly ahead of plain BF16.
+- Fused AdamW improved throughput versus the matching non-fused precision stages in the refreshed `gpt_small` run. BF16 + fused AdamW beat both plain BF16 and FP16 + fused AdamW in this run.
 - `torch.compile` remained unavailable on this Windows setup because Triton was missing, so compiled results are recorded as failed rather than treated as a speedup.
+
+## Optional WSL2 torch.compile validation
+
+`torch.compile` failed on Windows because Triton was unavailable. WSL2/Linux is the intended environment for validating `torch.compile` on this project. Add results to this README only after the WSL2 benchmark actually runs successfully.
+
+```bash
+cd ~/llm-training-performance-lab
+python -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'No CUDA')"
+python benchmark_optimizations.py --config configs/gpt_small.yaml --steps 50 --warmup-steps 10 --repeats 3
+```
 
 ## Profiling
 
@@ -203,7 +221,7 @@ This project maps directly to performance-focused AI engineering work:
 ### NVIDIA / ML Systems Version
 
 - Built a PyTorch LLM training performance benchmark for GPT-style Transformer workloads on an NVIDIA RTX 3060 Laptop GPU, measuring tokens/sec, step latency, GPU memory, validation loss, and perplexity.
-- Profiled and benchmarked FP32 and AMP training configurations, showing memory reduction from 249.40 MB to 181.41 MB at batch 32 / sequence length 128 while documenting throughput tradeoffs.
+- Profiled and benchmarked FP32, TF32, SDPA, FP16, BF16, and fused AdamW training configurations, reaching a measured 2.67x `gpt_small` speedup with BF16 + fused AdamW while documenting memory and throughput tradeoffs.
 - Created MLPerf-inspired benchmark reports with hardware disclosure, JSON/CSV outputs, plots, profiler traces, and reproducible configs for GPU training analysis.
 
 ### General AI Engineer Version
