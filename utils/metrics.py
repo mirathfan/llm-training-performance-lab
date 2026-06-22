@@ -6,10 +6,14 @@ from typing import Dict
 import torch
 
 
-def autocast_context(device: torch.device | str, enabled: bool):
+def autocast_context(device: torch.device | str, precision: str | bool = "fp32"):
     device = torch.device(device)
-    if enabled and device.type == "cuda":
-        return torch.cuda.amp.autocast(enabled=True)
+    if isinstance(precision, bool):
+        precision = "fp16" if precision else "fp32"
+    if device.type == "cuda" and precision == "fp16":
+        return torch.amp.autocast("cuda", dtype=torch.float16)
+    if device.type == "cuda" and precision == "bf16" and torch.cuda.is_bf16_supported():
+        return torch.amp.autocast("cuda", dtype=torch.bfloat16)
     return nullcontext()
 
 
@@ -21,7 +25,7 @@ def estimate_loss(
     batch_size: int,
     block_size: int,
     device: torch.device | str,
-    amp_enabled: bool = False,
+    precision: str | bool = "fp32",
 ) -> Dict[str, float]:
     model_was_training = model.training
     model.eval()
@@ -31,7 +35,7 @@ def estimate_loss(
         split_losses = torch.zeros(eval_iters)
         for k in range(eval_iters):
             xb, yb = dataset.get_batch(split, batch_size, block_size)
-            with autocast_context(device, amp_enabled):
+            with autocast_context(device, precision):
                 _, loss = model(xb, yb)
             split_losses[k] = loss.item()
         losses[split] = float(split_losses.mean().item())

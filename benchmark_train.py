@@ -12,10 +12,12 @@ from train import (
     autocast_context,
     build_model,
     build_optimizer,
+    configure_tf32,
     get_lr,
     load_config,
     make_grad_scaler,
     maybe_compile_model,
+    precision_is_available,
     resolve_config,
 )
 from utils.device import get_device, get_device_name, get_gpu_memory_stats
@@ -33,6 +35,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seq-lens", nargs="+", type=int, help="Sequence lengths to benchmark.")
     parser.add_argument("--warmup-steps", type=int, default=5, help="Warmup steps before timing.")
     parser.add_argument("--benchmark-steps", "--steps", type=int, default=20, help="Timed benchmark steps.")
+    parser.add_argument("--attention-backend", choices=["manual", "sdpa"], help="Attention backend to use.")
+    parser.add_argument("--tf32", action="store_true", help="Enable TF32 matmul/convolution on CUDA.")
+    parser.add_argument("--precision", choices=["fp32", "fp16", "bf16"], help="Training precision/autocast mode.")
+    parser.add_argument("--fused-adamw", action="store_true", help="Use fused AdamW when supported.")
     parser.add_argument("--device", help="Override device: auto, cpu, cuda, cuda:0, etc.")
     return parser.parse_args()
 
@@ -41,8 +47,10 @@ def mode_flags(mode: str) -> Dict[str, bool]:
     normalized = mode.lower().replace("-", "_")
     return {
         "amp": "amp" in normalized,
+        "precision": "fp16" if "amp" in normalized or "fp16" in normalized else "fp32",
         "torch_compile": "compile" in normalized,
         "activation_checkpointing": "checkpoint" in normalized,
+        "attention_backend": "sdpa" if "sdpa" in normalized else None,
     }
 
 
@@ -58,7 +66,9 @@ def benchmark_one(
 ) -> Dict[str, Any]:
     config = dict(base_config)
     flags = mode_flags(mode)
-    config.update(flags)
+    for key, value in flags.items():
+        if value is not None:
+            config[key] = value
     config["batch_size"] = batch_size
     config["block_size"] = seq_len
     config["max_iters"] = warmup_steps + benchmark_steps
@@ -68,8 +78,8 @@ def benchmark_one(
     raw_model = build_model(config, device)
     optimizer = build_optimizer(raw_model, config)
     model, compile_enabled = maybe_compile_model(raw_model, config)
-    amp_enabled = flags["amp"] and device.type == "cuda"
-    scaler = make_grad_scaler(amp_enabled)
+    precision = config.get("precision", "fp32")
+    scaler = make_grad_scaler(precision, device)
 
     timings: List[float] = []
     reset_peak_memory(device)
@@ -86,7 +96,7 @@ def benchmark_one(
             optimizer.zero_grad(set_to_none=True)
             for _ in range(grad_accum_steps):
                 xb, yb = dataset.get_batch("train", batch_size, seq_len)
-                with autocast_context(device, amp_enabled):
+                with autocast_context(device, precision):
                     _, loss = model(xb, yb)
                     loss_for_backward = loss / grad_accum_steps
                 scaler.scale(loss_for_backward).backward()
@@ -110,11 +120,16 @@ def benchmark_one(
     return {
         "status": "ok",
         "mode": mode,
-        "precision": "amp" if amp_enabled else "fp32",
-        "amp_enabled": amp_enabled,
+        "precision": precision,
+        "amp_enabled": precision in {"fp16", "bf16"} and device.type == "cuda",
         "torch_compile_requested": flags["torch_compile"],
         "torch_compile_enabled": compile_enabled,
         "activation_checkpointing": flags["activation_checkpointing"],
+        "attention_backend": config.get("attention_backend", "manual"),
+        "tf32_enabled": bool(config.get("tf32", False)),
+        "fused_adamw_requested": bool(config.get("fused_adamw", False)),
+        "fused_adamw_enabled": bool(config.get("fused_adamw_enabled_resolved", False)),
+        "fused_adamw_error": config.get("fused_adamw_error", ""),
         "batch_size": batch_size,
         "seq_len": seq_len,
         "avg_step_time_ms": avg_step_time_s * 1000.0,
@@ -136,7 +151,7 @@ def benchmark_one(
             "n_embd": config["n_embd"],
             "dropout": config["dropout"],
         },
-        "note": "" if (mode.lower() != "amp" or amp_enabled) else "AMP requested but disabled because CUDA is unavailable.",
+        "note": "" if (mode.lower() != "amp" or device.type == "cuda") else "AMP requested but disabled because CUDA is unavailable.",
     }
 
 
@@ -192,6 +207,7 @@ def main() -> None:
         args.seq_lens = [int(base_config["block_size"])]
 
     device = get_device(base_config.get("device", "auto"))
+    configure_tf32(bool(base_config.get("tf32", False)), device)
     dataset = CharDataset(base_config["data_dir"], device=device)
     results_dir = Path(base_config.get("results_dir", "results"))
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -200,6 +216,11 @@ def main() -> None:
     for mode, batch_size, seq_len in itertools.product(args.modes, args.batch_sizes, args.seq_lens):
         print(f"Benchmarking mode={mode}, batch_size={batch_size}, seq_len={seq_len} on {get_device_name(device)}")
         try:
+            flags = mode_flags(mode)
+            precision = flags.get("precision") or base_config.get("precision", "fp32")
+            available, error = precision_is_available(precision, device)
+            if not available:
+                raise RuntimeError(error)
             row = benchmark_one(
                 base_config,
                 dataset,

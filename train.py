@@ -21,6 +21,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", required=True, help="Path to a YAML config file.")
     parser.add_argument("--amp", action="store_true", help="Enable CUDA AMP mixed precision.")
     parser.add_argument("--compile", action="store_true", dest="torch_compile", help="Enable torch.compile.")
+    parser.add_argument("--attention-backend", choices=["manual", "sdpa"], help="Attention backend to use.")
+    parser.add_argument("--tf32", action="store_true", help="Enable TF32 matmul/convolution on CUDA.")
+    parser.add_argument("--precision", choices=["fp32", "fp16", "bf16"], help="Training precision/autocast mode.")
+    parser.add_argument("--fused-adamw", action="store_true", help="Use fused AdamW when CUDA/PyTorch support it.")
     parser.add_argument(
         "--activation-checkpointing",
         action="store_true",
@@ -65,12 +69,26 @@ def resolve_config(config: Dict[str, Any], args: argparse.Namespace | None = Non
     resolved.setdefault("log_interval", 10)
     resolved.setdefault("gradient_accumulation_steps", 1)
     resolved.setdefault("amp", False)
+    resolved.setdefault("precision", "fp16" if resolved.get("amp", False) else "fp32")
+    resolved.setdefault("attention_backend", "manual")
+    resolved.setdefault("tf32", False)
+    resolved.setdefault("fused_adamw", False)
     resolved.setdefault("torch_compile", False)
     resolved.setdefault("activation_checkpointing", False)
 
     if args is not None:
         if getattr(args, "amp", False):
             resolved["amp"] = True
+            if getattr(args, "precision", None) is None:
+                resolved["precision"] = "fp16"
+        if getattr(args, "precision", None) is not None:
+            resolved["precision"] = args.precision
+        if getattr(args, "attention_backend", None) is not None:
+            resolved["attention_backend"] = args.attention_backend
+        if getattr(args, "tf32", False):
+            resolved["tf32"] = True
+        if getattr(args, "fused_adamw", False):
+            resolved["fused_adamw"] = True
         if getattr(args, "torch_compile", False):
             resolved["torch_compile"] = True
         if getattr(args, "activation_checkpointing", False):
@@ -102,6 +120,11 @@ def resolve_config(config: Dict[str, Any], args: argparse.Namespace | None = Non
     resolved["n_layer"] = int(resolved["n_layer"])
     resolved["n_head"] = int(resolved["n_head"])
     resolved["n_embd"] = int(resolved["n_embd"])
+    if resolved["attention_backend"] not in {"manual", "sdpa"}:
+        raise ValueError("attention_backend must be 'manual' or 'sdpa'")
+    if resolved["precision"] not in {"fp32", "fp16", "bf16"}:
+        raise ValueError("precision must be 'fp32', 'fp16', or 'bf16'")
+    resolved["amp"] = resolved["precision"] in {"fp16", "bf16"}
     resolved["batch_size"] = int(resolved["batch_size"])
     resolved["gradient_accumulation_steps"] = int(resolved["gradient_accumulation_steps"])
     if resolved["gradient_accumulation_steps"] < 1:
@@ -122,17 +145,33 @@ def build_model(config: Dict[str, Any], device: torch.device) -> GPT:
         n_embd=config["n_embd"],
         dropout=float(config["dropout"]),
         activation_checkpointing=bool(config.get("activation_checkpointing", False)),
+        attention_backend=config.get("attention_backend", "manual"),
     )
     return GPT(model_config).to(device)
 
 
 def build_optimizer(model: torch.nn.Module, config: Dict[str, Any]) -> torch.optim.Optimizer:
-    return torch.optim.AdamW(
-        model.parameters(),
-        lr=float(config["learning_rate"]),
-        betas=(float(config["beta1"]), float(config["beta2"])),
-        weight_decay=float(config["weight_decay"]),
-    )
+    kwargs = {
+        "lr": float(config["learning_rate"]),
+        "betas": (float(config["beta1"]), float(config["beta2"])),
+        "weight_decay": float(config["weight_decay"]),
+    }
+    config["fused_adamw_enabled_resolved"] = False
+    config["fused_adamw_error"] = ""
+
+    requested = bool(config.get("fused_adamw", False))
+    device_type = next(model.parameters()).device.type
+    if requested and device_type == "cuda":
+        try:
+            optimizer = torch.optim.AdamW(model.parameters(), fused=True, **kwargs)
+            config["fused_adamw_enabled_resolved"] = bool(optimizer.defaults.get("fused", False))
+            return optimizer
+        except (RuntimeError, TypeError) as exc:
+            config["fused_adamw_error"] = str(exc)
+    elif requested:
+        config["fused_adamw_error"] = "Fused AdamW requires CUDA."
+
+    return torch.optim.AdamW(model.parameters(), **kwargs)
 
 
 def get_lr(iter_num: int, config: Dict[str, Any]) -> float:
@@ -152,16 +191,43 @@ def get_lr(iter_num: int, config: Dict[str, Any]) -> float:
     return min_lr + coeff * (learning_rate - min_lr)
 
 
-def autocast_context(device: torch.device, enabled: bool):
+def configure_tf32(enabled: bool, device: torch.device) -> Tuple[bool, str]:
+    if device.type != "cuda":
+        return False, "TF32 requires CUDA."
+    torch.backends.cuda.matmul.allow_tf32 = bool(enabled)
+    torch.backends.cudnn.allow_tf32 = bool(enabled)
+    torch.set_float32_matmul_precision("high" if enabled else "highest")
+    return bool(enabled), ""
+
+
+def precision_is_available(precision: str, device: torch.device) -> Tuple[bool, str]:
+    if precision == "fp32":
+        return True, ""
+    if device.type != "cuda":
+        return False, f"{precision} autocast requires CUDA."
+    if precision == "bf16" and not torch.cuda.is_bf16_supported():
+        return False, "BF16 autocast is not supported by this CUDA device."
+    return True, ""
+
+
+def autocast_context(device: torch.device, precision: str | bool = "fp32"):
     from contextlib import nullcontext
 
-    if enabled and device.type == "cuda":
-        return torch.cuda.amp.autocast(enabled=True)
+    if isinstance(precision, bool):
+        precision = "fp16" if precision else "fp32"
+    if device.type == "cuda" and precision == "fp16":
+        return torch.amp.autocast("cuda", dtype=torch.float16)
+    if device.type == "cuda" and precision == "bf16" and torch.cuda.is_bf16_supported():
+        return torch.amp.autocast("cuda", dtype=torch.bfloat16)
     return nullcontext()
 
 
-def make_grad_scaler(enabled: bool):
-    return torch.cuda.amp.GradScaler(enabled=enabled)
+def make_grad_scaler(precision: str | bool, device: torch.device | None = None):
+    if isinstance(precision, bool):
+        enabled = precision
+    else:
+        enabled = precision == "fp16" and (device is None or device.type == "cuda")
+    return torch.amp.GradScaler("cuda", enabled=enabled)
 
 
 def maybe_compile_model(model: GPT, config: Dict[str, Any]) -> Tuple[torch.nn.Module, bool]:
@@ -201,15 +267,18 @@ def save_checkpoint(
 def train(config: Dict[str, Any]) -> None:
     set_seed(config["seed"])
     device = get_device(config.get("device", "auto"))
-    amp_enabled = bool(config.get("amp", False)) and device.type == "cuda"
-    if config.get("amp", False) and not amp_enabled:
-        print("AMP requested, but CUDA is unavailable. Training will use FP32.")
+    tf32_enabled, tf32_error = configure_tf32(bool(config.get("tf32", False)), device)
+    precision_requested = str(config.get("precision", "fp32"))
+    precision_available, precision_error = precision_is_available(precision_requested, device)
+    precision = precision_requested if precision_available else "fp32"
+    if not precision_available:
+        print(f"{precision_requested} requested but unavailable: {precision_error} Training will use FP32.")
 
     dataset = CharDataset(config["data_dir"], device=device)
     raw_model = build_model(config, device)
     optimizer = build_optimizer(raw_model, config)
     model, compile_enabled = maybe_compile_model(raw_model, config)
-    scaler = make_grad_scaler(amp_enabled)
+    scaler = make_grad_scaler(precision, device)
 
     run_name = config["run_name"]
     run_dir = create_run_dir(config["results_dir"], run_name)
@@ -218,7 +287,11 @@ def train(config: Dict[str, Any]) -> None:
 
     config["device_resolved"] = str(device)
     config["device_name"] = get_device_name(device)
-    config["amp_enabled_resolved"] = amp_enabled
+    config["precision_requested"] = precision_requested
+    config["precision_resolved"] = precision
+    config["amp_enabled_resolved"] = precision in {"fp16", "bf16"}
+    config["tf32_enabled_resolved"] = tf32_enabled
+    config["tf32_error"] = tf32_error
     config["torch_compile_enabled_resolved"] = compile_enabled
     config["parameter_count"] = count_parameters(raw_model)
     save_config_copy(config, run_dir)
@@ -245,7 +318,7 @@ def train(config: Dict[str, Any]) -> None:
             optimizer.zero_grad(set_to_none=True)
             for _ in range(grad_accum_steps):
                 xb, yb = dataset.get_batch("train", config["batch_size"], config["block_size"])
-                with autocast_context(device, amp_enabled):
+                with autocast_context(device, precision):
                     _, loss = model(xb, yb)
                     loss_for_backward = loss / grad_accum_steps
                 train_loss_value += float(loss.item())
@@ -273,7 +346,7 @@ def train(config: Dict[str, Any]) -> None:
                 config["batch_size"],
                 config["block_size"],
                 device,
-                amp_enabled,
+                precision,
             )
             val_ppl = perplexity_from_loss(losses["val"])
             record = {
@@ -286,6 +359,10 @@ def train(config: Dict[str, Any]) -> None:
                 "step_time_ms": step_time_s * 1000.0,
                 "tokens_per_sec": tokens_per_sec,
                 "gradient_accumulation_steps": grad_accum_steps,
+                "precision": precision,
+                "attention_backend": config.get("attention_backend", "manual"),
+                "tf32_enabled": tf32_enabled,
+                "fused_adamw_enabled": bool(config.get("fused_adamw_enabled_resolved", False)),
                 **memory_stats,
             }
             append_json_log(record, log_path)

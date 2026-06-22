@@ -26,6 +26,9 @@ seed: 1337
 
 device: auto
 amp: false
+precision: fp32
+tf32: false
+fused_adamw: false
 torch_compile: false
 activation_checkpointing: false
 
