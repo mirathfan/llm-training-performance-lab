@@ -90,12 +90,24 @@ def optimization_plan(device: torch.device) -> List[Dict[str, Any]]:
             "torch_compile": False,
         },
         {
-            "name": "tf32_sdpa_fp16_fused_adamw_compile",
-            "precision": "fp16",
+            "name": "tf32_sdpa_bf16_fused_adamw",
+            "precision": "bf16",
+            "attention_backend": "sdpa",
+            "tf32": True,
+            "fused_adamw": True,
+            "torch_compile": False,
+            "skip": not bf16_supported,
+            "skip_reason": "BF16 is not supported by this CUDA device." if not bf16_supported else "",
+        },
+        {
+            "name": "tf32_sdpa_bf16_fused_adamw_compile",
+            "precision": "bf16",
             "attention_backend": "sdpa",
             "tf32": True,
             "fused_adamw": True,
             "torch_compile": True,
+            "skip": not bf16_supported,
+            "skip_reason": "BF16 is not supported by this CUDA device." if not bf16_supported else "",
         },
     ]
 
