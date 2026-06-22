@@ -121,6 +121,49 @@ Sequence length changes both compute and memory behavior. Longer sequences incre
 
 `torch.compile` was requested, but this Windows environment did not have a working Triton installation. Compiled results are therefore treated as unavailable for this run. A future WSL2 or Linux benchmark may be a better environment for evaluating `torch.compile` speedups honestly.
 
+## Optimization Roadmap
+
+The `benchmark_optimizations.py` harness stacks optimizations cumulatively so each row can be compared against the same baseline. The full runs below used 10 warmup steps, 50 measured steps, and 3 repeats per stage.
+
+SDPA uses PyTorch's `scaled_dot_product_attention` dispatch instead of the manual attention implementation. Depending on the GPU, tensor shapes, PyTorch build, and sequence length, SDPA may use optimized kernels that reduce memory use and latency, especially as sequence length grows.
+
+BF16 is tested only when `torch.cuda.is_bf16_supported()` returns true. BF16 performance and memory behavior should be reported empirically from generated benchmark files, not assumed.
+
+### gpt_tiny Optimization Results
+
+| optimization stage | status | precision | attention | tokens/sec mean +/- std | step ms mean +/- std | max memory MB mean +/- std | speedup |
+| --- | --- | --- | --- | ---: | ---: | ---: | ---: |
+| baseline_fp32_manual | ok | fp32 | manual | 231516.45 +/- 5646.74 | 17.70 +/- 0.43 | 249.27 +/- 0.00 | 1.00x |
+| tf32_manual | ok | fp32 | manual | 242115.49 +/- 18786.29 | 16.99 +/- 1.38 | 249.27 +/- 0.00 | 1.04x |
+| tf32_sdpa | ok | fp32 | sdpa | 299150.60 +/- 12641.55 | 13.71 +/- 0.57 | 177.46 +/- 0.00 | 1.29x |
+| tf32_sdpa_fp16 | ok | fp16 | sdpa | 236668.60 +/- 20173.88 | 17.40 +/- 1.56 | 121.72 +/- 0.00 | 1.02x |
+| tf32_sdpa_bf16 | ok | bf16 | sdpa | 261788.10 +/- 2830.20 | 15.65 +/- 0.17 | 121.72 +/- 0.00 | 1.13x |
+| tf32_sdpa_fp16_fused_adamw | ok | fp16 | sdpa | 256684.82 +/- 10029.47 | 15.97 +/- 0.63 | 121.75 +/- 0.00 | 1.11x |
+| tf32_sdpa_fp16_fused_adamw_compile | failed: Triton missing | fp16 | sdpa | unavailable | unavailable | unavailable | unavailable |
+
+### gpt_small Optimization Results
+
+| optimization stage | status | precision | attention | tokens/sec mean +/- std | step ms mean +/- std | max memory MB mean +/- std | speedup |
+| --- | --- | --- | --- | ---: | ---: | ---: | ---: |
+| baseline_fp32_manual | ok | fp32 | manual | 50598.83 +/- 1148.95 | 80.98 +/- 1.86 | 1120.49 +/- 1.63 | 1.00x |
+| tf32_manual | ok | fp32 | manual | 66797.40 +/- 1062.35 | 61.33 +/- 0.97 | 1120.07 +/- 0.25 | 1.32x |
+| tf32_sdpa | ok | fp32 | sdpa | 78109.80 +/- 216.95 | 52.44 +/- 0.15 | 795.95 +/- 2.81 | 1.54x |
+| tf32_sdpa_fp16 | ok | fp16 | sdpa | 124563.32 +/- 900.87 | 32.88 +/- 0.24 | 553.17 +/- 1.92 | 2.46x |
+| tf32_sdpa_bf16 | ok | bf16 | sdpa | 130045.08 +/- 605.88 | 31.50 +/- 0.15 | 551.66 +/- 2.96 | 2.57x |
+| tf32_sdpa_fp16_fused_adamw | ok | fp16 | sdpa | 128702.92 +/- 1638.66 | 31.83 +/- 0.40 | 551.62 +/- 0.36 | 2.54x |
+| tf32_sdpa_fp16_fused_adamw_compile | failed: Triton missing | fp16 | sdpa | unavailable | unavailable | unavailable | unavailable |
+
+## Optimization Findings
+
+- Fastest `gpt_tiny` stage: `tf32_sdpa` at 299150.60 +/- 12641.55 tokens/sec, a 1.29x speedup over baseline.
+- Fastest `gpt_small` stage: `tf32_sdpa_bf16` at 130045.08 +/- 605.88 tokens/sec, a 2.57x speedup over baseline.
+- Lowest `gpt_tiny` memory: `tf32_sdpa_bf16` at 121.72 +/- 0.00 MB, a 127.55 MB reduction from the 249.27 MB baseline.
+- Lowest `gpt_small` memory: `tf32_sdpa_fp16_fused_adamw` at 551.62 +/- 0.36 MB, a 568.87 MB reduction from the 1120.49 MB baseline.
+- SDPA improved both throughput and memory versus the corresponding TF32 manual-attention stage in both configs.
+- FP16 and BF16 reduced memory in both configs. For `gpt_tiny`, they did not beat the TF32+SDPA throughput result. For `gpt_small`, both FP16 and BF16 improved throughput over TF32+SDPA, with BF16 fastest in this run.
+- Fused AdamW improved throughput versus the FP16 SDPA stage in both configs, but it was not the fastest `gpt_tiny` stage and did not beat BF16 on `gpt_small`.
+- `torch.compile` remained unavailable on this Windows setup because Triton was missing, so compiled results are recorded as failed rather than treated as a speedup.
+
 ## Profiling
 
 Profiler traces are written to `results/profiler/<run_name>/`. Open them with:
