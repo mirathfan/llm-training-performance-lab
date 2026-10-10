@@ -1,14 +1,16 @@
 # LLM Training Performance Lab
 
-## Overview
+A small GPT-style PyTorch training performance lab with MLPerf-inspired methodology, a reproducible experiment registry, and an interactive dashboard for saved results. It measures throughput, step latency and GPU memory on local hardware; it does not claim production-scale training, universal speedups or MLPerf compliance.
 
-LLM Training Performance Lab is a reproducible PyTorch benchmark project for GPT-style Transformer training performance. It focuses on small decoder-only language models that can be trained, benchmarked, and profiled on local NVIDIA GPUs while still running basic commands on CPU-only machines.
+**Strongest verified result: 3.02× steady-state speedup and 52.41% less peak allocated GPU memory** for the saved WSL2 `gpt_small` run on an NVIDIA GeForce RTX 3060 Laptop GPU. TF32 + SDPA + BF16 + fused AdamW + `torch.compile` reached **154,197.54 ± 587.16 tokens/s**, **26.56 ± 0.10 ms/step**, and **532.91 ± 1.23 MiB** across three successful repeats. The FP32 manual-attention baseline was 80.32 ± 0.34 ms/step and 1,119.76 ± 1.23 MiB at the same batch 16 / sequence 256 workload. Speedup uses the ratio of mean step latencies.
 
-The project is intentionally performance-oriented: it tracks throughput, step latency, validation loss, perplexity, GPU memory, and profiler traces across training configurations.
+[Dashboard setup and quick start](docs/experiments.md) · [Performance case study](docs/performance_case_study.md) · [Verification and CI evidence](docs/verification.md) · [Interview notes](docs/interview_notes.md)
 
-## Why This Project Matters
+[![Real WSL2 gpt_small benchmark table and performance charts](docs/images/dashboard.png)](docs/images/dashboard.png)
 
-High-performance AI training work is about more than model quality. Engineers need to understand GPU utilization, memory pressure, mixed precision, profiler output, and the tradeoffs between speed and memory. This repository gives a compact, resume-ready lab for practicing those skills without requiring a large cluster or proprietary dataset.
+*Saved run `legacy-71487210a6576368`: WSL2 `gpt_small`, eight optimization stages and three successful repeats per stage. Captured from the running read-only dashboard; open the image for full-size measurements and charts.*
+
+The dashboard is a **local service**, not a publicly hosted demo. Follow the setup link to build the frontend, import saved artifacts and start the server, then open [http://127.0.0.1:8000](http://127.0.0.1:8000). Viewing results does not launch training or download data. Historical run timestamps, Git state, resolved configs and dataset hashes remain explicitly unknown; environment details are disclosed from the earlier documentation and kept distinct from captured raw fields.
 
 ## Architecture Summary
 
@@ -66,15 +68,15 @@ Smoke training was run for 20 iterations with `configs/gpt_tiny.yaml` and AMP on
 ## Key Findings
 
 - CUDA was successfully enabled on an NVIDIA GeForce RTX 3060 Laptop GPU.
-- FP32 at batch 32 / seq 128 reached 187,882.71 tokens/sec with 21.80 ms/step and 249.40 MB max GPU memory.
-- AMP at batch 32 / seq 128 reached 179,190.97 tokens/sec with 22.86 ms/step and 181.41 MB max GPU memory.
+- FP32 at batch 32 / seq 128 reached 187,882.71 tokens/sec with 21.80 ms/step and 249.40 MiB max GPU memory.
+- AMP at batch 32 / seq 128 reached 179,190.97 tokens/sec with 22.86 ms/step and 181.41 MiB max GPU memory.
 - AMP reduced memory usage in this setting, but did not outperform FP32 at the small benchmark size.
 - Best batch-scaling result was AMP batch 64 / seq 128 at 375,771.54 tokens/sec.
 - Best sequence-scaling result was AMP batch 32 / seq 256 at 354,869.84 tokens/sec.
 - BF16 + fused AdamW was tested after the initial optimization benchmark to complete the `gpt_small` optimization matrix.
 - After supplying Python development headers in WSL2, `torch.compile` validated successfully on the BF16 + fused AdamW stack.
-- The best WSL2 `gpt_small` result was `tf32_sdpa_bf16_fused_adamw_compile` at 154,197.54 +/- 587.16 tokens/sec, 26.56 +/- 0.10 ms/step, 532.91 +/- 1.23 MB max GPU memory, and 3.02x speedup over baseline.
-- The compiled WSL2 run improved over the previous validated Windows non-compiled BF16 + fused AdamW result of 135,606.99 +/- 1,563.28 tokens/sec and 2.67x speedup.
+- The best WSL2 `gpt_small` result was `tf32_sdpa_bf16_fused_adamw_compile` at 154,197.54 +/- 587.16 tokens/sec, 26.56 +/- 0.10 ms/step, 532.91 +/- 1.23 MiB max GPU memory, and 3.02x speedup over baseline.
+- Earlier README revisions cited a native Windows `gpt_small` BF16 + fused AdamW result, but its separate raw artifact is absent from the current saved results. Its numerical claims are not used here for verified comparisons.
 - `torch.compile` still failed on native Windows because Triton was missing, so native Windows compiled results remain unavailable instead of fabricated.
 
 ## Benchmark Results
@@ -83,7 +85,7 @@ All benchmark runs used `gpt_tiny`, 5 warmup steps, 20 benchmark steps, and grad
 
 ### Mode Comparison
 
-| mode | batch size | seq len | tokens/sec | step time ms | max memory MB | device |
+| mode | batch size | seq len | tokens/sec | step time ms | max memory MiB | device |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | fp32 | 32 | 128 | 187882.71 | 21.80 | 249.40 | NVIDIA GeForce RTX 3060 Laptop GPU |
 | amp | 32 | 128 | 179190.97 | 22.86 | 181.41 | NVIDIA GeForce RTX 3060 Laptop GPU |
@@ -93,7 +95,7 @@ All benchmark runs used `gpt_tiny`, 5 warmup steps, 20 benchmark steps, and grad
 
 ### Batch Size Scaling
 
-| mode | batch size | seq len | tokens/sec | step time ms | max memory MB | device |
+| mode | batch size | seq len | tokens/sec | step time ms | max memory MiB | device |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | fp32 | 8 | 128 | 53693.27 | 19.07 | 82.92 | NVIDIA GeForce RTX 3060 Laptop GPU |
 | fp32 | 16 | 128 | 92146.24 | 22.23 | 137.87 | NVIDIA GeForce RTX 3060 Laptop GPU |
@@ -106,7 +108,7 @@ All benchmark runs used `gpt_tiny`, 5 warmup steps, 20 benchmark steps, and grad
 
 ### Sequence Length Scaling
 
-| mode | batch size | seq len | tokens/sec | step time ms | max memory MB | device |
+| mode | batch size | seq len | tokens/sec | step time ms | max memory MiB | device |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | fp32 | 32 | 64 | 99027.14 | 20.68 | 120.42 | NVIDIA GeForce RTX 3060 Laptop GPU |
 | fp32 | 32 | 128 | 212341.58 | 19.29 | 251.27 | NVIDIA GeForce RTX 3060 Laptop GPU |
@@ -127,7 +129,7 @@ Sequence length changes both compute and memory behavior. Longer sequences incre
 
 ## Optimization Roadmap
 
-The `benchmark_optimizations.py` harness stacks optimizations cumulatively so each row can be compared against the same baseline. The full runs below used 10 warmup steps, 50 measured steps, and 3 repeats per stage.
+The `benchmark_optimizations.py` harness stacks optimizations cumulatively so each row can be compared against the same baseline. The full runs below used 10 warmup steps, 50 measured steps, and 3 successful repeats for each available stage. The Windows compile stage failed on its first attempt (0/1 successful repeats) and has no valid metrics.
 
 SDPA uses PyTorch's `scaled_dot_product_attention` dispatch instead of the manual attention implementation. Depending on the GPU, tensor shapes, PyTorch build, and sequence length, SDPA may use optimized kernels that reduce memory use and latency, especially as sequence length grows.
 
@@ -137,7 +139,7 @@ BF16 is tested only when `torch.cuda.is_bf16_supported()` returns true. BF16 per
 
 These `gpt_tiny` optimization results were generated before the BF16 + fused AdamW stage was added.
 
-| optimization stage | status | precision | attention | tokens/sec mean +/- std | step ms mean +/- std | max memory MB mean +/- std | speedup |
+| optimization stage | status | precision | attention | tokens/sec mean +/- std | step ms mean +/- std | max memory MiB mean +/- std | speedup |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
 | baseline_fp32_manual | ok | fp32 | manual | 231516.45 +/- 5646.74 | 17.70 +/- 0.43 | 249.27 +/- 0.00 | 1.00x |
 | tf32_manual | ok | fp32 | manual | 242115.49 +/- 18786.29 | 16.99 +/- 1.38 | 249.27 +/- 0.00 | 1.04x |
@@ -151,7 +153,7 @@ These `gpt_tiny` optimization results were generated before the BF16 + fused Ada
 
 These `gpt_small` results are from the WSL2 Ubuntu validation run with PyTorch 2.12.1+cu130. The `torch.compile` stage succeeded after Python development headers were made available in WSL2.
 
-| optimization stage | status | precision | attention | tokens/sec mean +/- std | step ms mean +/- std | max memory MB mean +/- std | speedup |
+| optimization stage | status | precision | attention | tokens/sec mean +/- std | step ms mean +/- std | max memory MiB mean +/- std | speedup |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
 | baseline_fp32_manual | ok | fp32 | manual | 50997.73 +/- 216.45 | 80.32 +/- 0.34 | 1119.76 +/- 1.23 | 1.00x |
 | tf32_manual | ok | fp32 | manual | 63681.44 +/- 3003.08 | 64.41 +/- 2.96 | 1119.18 +/- 0.00 | 1.25x |
@@ -166,13 +168,13 @@ These `gpt_small` results are from the WSL2 Ubuntu validation run with PyTorch 2
 
 - Fastest `gpt_tiny` stage: `tf32_sdpa` at 299150.60 +/- 12641.55 tokens/sec, a 1.29x speedup over baseline.
 - Fastest WSL2 `gpt_small` stage: `tf32_sdpa_bf16_fused_adamw_compile` at 154197.54 +/- 587.16 tokens/sec, a 3.02x speedup over baseline.
-- Lowest `gpt_tiny` memory: `tf32_sdpa_bf16` at 121.72 +/- 0.00 MB, a 127.55 MB reduction from the 249.27 MB baseline.
-- Lowest WSL2 `gpt_small` memory: `tf32_sdpa_bf16_fused_adamw_compile` at 532.91 +/- 1.23 MB, a 586.85 MB reduction from the 1119.76 MB baseline.
+- Lowest `gpt_tiny` memory: `tf32_sdpa_bf16` at 121.72 +/- 0.00 MiB, a 127.55 MiB reduction from the 249.27 MiB baseline.
+- Lowest WSL2 `gpt_small` memory: `tf32_sdpa_bf16_fused_adamw_compile` at 532.91 +/- 1.23 MiB, a 586.85 MiB reduction from the 1119.76 MiB baseline.
 - SDPA improved both throughput and memory versus the corresponding TF32 manual-attention stage in both configs.
 - FP16 and BF16 reduced memory in both configs. For `gpt_tiny`, they did not beat the TF32+SDPA throughput result. For the WSL2 `gpt_small` run, FP16 and BF16 both improved throughput over TF32+SDPA, with plain BF16 ahead of plain FP16.
 - Fused AdamW improved throughput versus the matching non-fused precision stages in the WSL2 `gpt_small` run. BF16 + fused AdamW beat both plain BF16 and FP16 + fused AdamW in this run.
-- In this WSL2 run, `torch.compile` improved the BF16 + fused AdamW stack from 130571.59 +/- 5554.74 to 154197.54 +/- 587.16 tokens/sec and reduced reported max memory from 552.79 +/- 0.00 MB to 532.91 +/- 1.23 MB.
-- Compared with the previous Windows BF16 + fused AdamW result of 135606.99 +/- 1563.28 tokens/sec and 2.67x, the compiled WSL2 result reached 154197.54 +/- 587.16 tokens/sec and 3.02x.
+- In this WSL2 run, `torch.compile` improved the BF16 + fused AdamW stack from 130571.59 +/- 5554.74 to 154197.54 +/- 587.16 tokens/sec and reduced reported max memory from 552.79 +/- 0.00 MiB to 532.91 +/- 1.23 MiB.
+- Windows `gpt_tiny` and WSL2 `gpt_small` are separate saved runs with different workloads and software environments. No cross-environment speedup is calculated.
 - `torch.compile` remains unavailable on native Windows in this project because Triton was missing there. The WSL2 compile path required Python development headers before Triton code generation could succeed.
 
 ## WSL2 torch.compile validation
@@ -189,7 +191,7 @@ True
 NVIDIA GeForce RTX 3060 Laptop GPU
 ```
 
-The original WSL2 failure was:
+Earlier README notes document the original WSL2 failure below. Its separate raw failure artifact is absent; the final saved raw repeats directly verify successful compilation:
 
 ```text
 fatal error: Python.h: No such file or directory
@@ -205,7 +207,7 @@ cd "/mnt/c/Users/Asus/Documents/LLM Training Performance Lab"
 python benchmark_optimizations.py --config configs/gpt_small.yaml --steps 50 --warmup-steps 10 --repeats 3
 ```
 
-The `torch.compile` smoke test then succeeded:
+Those historical setup notes report that the `torch.compile` smoke test then succeeded:
 
 ```text
 torch.Size([512, 512])
@@ -222,7 +224,9 @@ tensorboard --logdir results/profiler
 
 The profiler summary table is also saved to `results/<run_name>/profiler_summary.txt` for quick operator-level inspection.
 
-## Hardware Disclosure
+## Hardware Disclosure (native Windows)
+
+This table documents the native Windows environment. The WSL2 software versions are listed separately above; unrecorded WSL2 OS build and driver details remain unknown.
 
 | component | value |
 | --- | --- |

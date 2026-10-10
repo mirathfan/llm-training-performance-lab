@@ -1,6 +1,8 @@
-# Local verification record
+# Verification record
 
-Verified on October 9, 2026 (America/Chicago) in the existing Windows repository. No GPU benchmarks, long training, or training-data downloads were performed. The original checkout had no uncommitted changes at task start.
+## Initial upgrade — local checks
+
+Verified on October 9, 2026 (America/Chicago) in the existing Windows repository. No GPU benchmarks, long training, or training-data downloads were performed. The checkout was clean at the start of the initial upgrade; the portfolio follow-up began with that implementation still uncommitted. The following initial record predates the portfolio presentation changes and hosted CI verification below.
 
 | Check | Result |
 | --- | --- |
@@ -18,7 +20,7 @@ Verified on October 9, 2026 (America/Chicago) in the existing Windows repository
 
 The CPU suite covers model shapes and loss, both causal attention implementations, manual/SDPA forward and gradient parity with dropout disabled, benchmark aggregation and baseline calculations, partial/total failures, incompatible workloads, invalid metric relationships, legacy duplicate and summary-only imports, missing provenance, deterministic reports, unique future benchmark paths using a stubbed measurement function, read-only API routes, safe artifact paths, changed/missing downloads, and cross-run compatibility. The runner orchestration test does not perform training.
 
-The local Python environment was Python 3.10.0 with PyTorch 2.11.0+cu128. Tests ran entirely on CPU. FastAPI 0.143.0 / Starlette 1.7.0 emit one TestClient deprecation warning for httpx; the tests passed. GitHub Actions workflows were added but have not been executed on GitHub in this task.
+The local Python environment was Python 3.10.0 with PyTorch 2.11.0+cu128. Tests ran entirely on CPU. FastAPI 0.143.0 / Starlette 1.7.0 emit one TestClient deprecation warning for httpx; the tests passed. At the end of the initial upgrade, the new GitHub Actions workflow had not yet run on GitHub; these were local checks.
 
 ## Browser checks
 
@@ -52,4 +54,31 @@ The screenshot is saved locally at `.verification/dashboard-desktop.jpg`; genera
 
 ## Limits
 
-Historical timestamps, Git state, resolved configs and dataset hashes are unknown. Current historical runs therefore cannot be compared across runs with complete provenance. The prior Windows `gpt_small` artifact and the original WSL2 missing-header failure artifact are absent; the case study identifies their README-only documentation. Speedup uncertainty is not propagated; ratio charts explicitly state that it is unavailable. Real future GPU execution was not exercised in this task, in accordance with the request. GitHub-hosted CI still needs its first run. The local server serves a read-only review dashboard and is not a public deployment.
+Historical timestamps, Git state, resolved configs and dataset hashes are unknown. Current historical runs therefore cannot be compared across runs with complete provenance. The prior Windows `gpt_small` artifact and the original WSL2 missing-header failure artifact are absent; the case study identifies their README-only documentation. Speedup uncertainty is not propagated; ratio charts explicitly state that it is unavailable. Real future GPU execution was not exercised in this task, in accordance with the request. Hosted CI status for the portfolio follow-up is recorded below. The local server serves a read-only review dashboard and is not a public deployment.
+
+## Portfolio follow-up (October 9, 2026)
+
+No GPU benchmarks or training were run. Implementation commit: `f4f6211`. The README opening, memory units and historical Windows claims were corrected against saved evidence; the marked results block and regeneration workflow remain intact. Interview material separates measurements from hypotheses.
+
+| Executed command/check | Actual outcome |
+| --- | --- |
+| `python -m pytest -q` | 14 passed; one Starlette TestClient deprecation warning |
+| `python -m compileall .` | Exit 0 |
+| `python train.py --help`, `python benchmark_train.py --help`, `python benchmark_optimizations.py --help`, `python profile_train.py --help`, `python evaluate.py --help`, `python experiment.py --help` | Each exit 0 |
+| `pnpm --dir dashboard/frontend build` (installed pnpm runtime) | TypeScript and Vite passed; app 225.00 kB, charts 385.47 kB |
+| Saved WSL2 small / Windows tiny summary versus raw repeats | Successful counts and every available metric mean/sample SD agree |
+| Artifact preservation | All 41 original result files match their pre-follow-up SHA256 hashes |
+| README/report regeneration | Repeated offline regeneration preserves the complete README and reports |
+| `git diff --check` | Passed before committing |
+
+The WSL2 small baseline is FP32 manual attention, TF32 off, ordinary AdamW and compile off. The fastest stage uses TF32 + SDPA + BF16 + fused AdamW + compile. Both have three successful repeats, batch 16, sequence 256, 10 warmup and 50 measured steps. Mean latencies 80.3182596 and 26.5635860 ms give 3.0236226x. Throughput increases from 50,997.73 +/- 216.45 to 154,197.54 +/- 587.16 tokens/s. Peak allocated memory decreases from 1,119.76 +/- 1.23 to 532.91 +/- 1.23 MiB (52.41%); reserved memory is 1,160 +/- 8 versus 546 +/- 6.93 MiB. Dispersion is sample SD, not a confidence interval.
+
+The saved GPU name is RTX 3060 Laptop. Earlier documentation discloses Ubuntu/WSL2, Python 3.12.3, PyTorch 2.12.1+cu130 and CUDA 13.0; these are documentary environment evidence, not newly measured fields. Unknown historical provenance remains unknown. Native Windows tiny results and the absent earlier Windows small raw artifact do not establish cross-environment speedups.
+
+### Portfolio screenshot
+
+[`images/dashboard.png`](images/dashboard.png) is a real 1440 x 2120 desktop capture of the running local dashboard with `legacy-71487210a6576368` (WSL2 `gpt_small`) selected. It shows all eight stages and the throughput, latency, allocated-memory and speedup charts. The PNG was converted from the browser's JPEG capture without modifying the displayed results. Visual inspection confirmed readable labels, complete chart rendering and no text overlaps. Error-bar animation was disabled so captured uncertainty whiskers render consistently. No fixture data was used for this image.
+
+### Hosted CI
+
+Pending the first portfolio push. Local passes above do not establish a GitHub Actions pass. This section will be updated with the observed workflow URL and conclusion after the push.
