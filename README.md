@@ -266,3 +266,36 @@ This project maps directly to performance-focused AI engineering work:
 - Single-GPU benchmark only; no distributed training yet.
 - `torch.compile` remained unavailable on native Windows due to Triton setup, but was validated under WSL2 after Python development headers were supplied.
 - Future improvements: native Linux benchmarking, distributed data parallel, gradient accumulation experiments, activation checkpointing comparison, custom CUDA kernel, Nsight Systems profiling.
+
+<!-- BEGIN GENERATED EXPERIMENT RESULTS -->
+
+Saved experiments (no benchmarks run during report generation).
+
+| Run | Model | Environment | Stages | Validation errors |
+| --- | --- | --- | ---: | ---: |
+| legacy-4886037d8724b815 | gpt_tiny | Windows | 6 | 0 |
+| legacy-71487210a6576368 | gpt_small | WSL2 | 8 | 0 |
+| legacy-9cc958e8271a4a91 | gpt_tiny | Windows | 8 | 0 |
+| legacy-cbae540ab2c1552c | gpt_tiny | Windows | 7 | 0 |
+| legacy-ef40a7ca114ffbd7 | gpt_tiny | Windows | 3 | 0 |
+
+Each row below ranks a single workload within one saved run. Failed and invalid stages are excluded; Windows and WSL2 remain separate.
+
+| Run | Batch / seq | Fastest stage | Tokens/s mean ± SD | Speedup × | Lowest-memory stage | Allocated MiB mean ± SD |
+| --- | --- | --- | ---: | ---: | --- | ---: |
+| gpt_tiny / Windows / legacy-4886037d8724b815 | 32 / 128 | fp32 | 212,341.58 ± unknown | 1.00 | amp | 178.41 ± unknown |
+| gpt_tiny / Windows / legacy-4886037d8724b815 | 32 / 256 | amp | 354,869.84 ± unknown | 1.42 | amp | 447.75 ± unknown |
+| gpt_tiny / Windows / legacy-4886037d8724b815 | 32 / 64 | fp32 | 99,027.14 ± unknown | 1.00 | amp | 90.54 ± unknown |
+| gpt_small / WSL2 / legacy-71487210a6576368 | 16 / 256 | tf32_sdpa_bf16_fused_adamw_compile | 154,197.54 ± 587.16 | 3.02 | tf32_sdpa_bf16_fused_adamw_compile | 532.91 ± 1.23 |
+| gpt_tiny / Windows / legacy-9cc958e8271a4a91 | 16 / 128 | fp32 | 92,146.24 ± unknown | 1.00 | amp | 103.00 ± unknown |
+| gpt_tiny / Windows / legacy-9cc958e8271a4a91 | 32 / 128 | fp32 | 229,507.65 ± unknown | 1.00 | amp | 176.91 ± unknown |
+| gpt_tiny / Windows / legacy-9cc958e8271a4a91 | 64 / 128 | amp | 375,771.54 ± unknown | 1.17 | amp | 317.09 ± unknown |
+| gpt_tiny / Windows / legacy-9cc958e8271a4a91 | 8 / 128 | fp32 | 53,693.27 ± unknown | 1.00 | amp | 65.67 ± unknown |
+| gpt_tiny / Windows / legacy-cbae540ab2c1552c | 32 / 128 | tf32_sdpa | 299,150.60 ± 12,641.55 | 1.29 | tf32_sdpa_bf16 | 121.72 ± 0.00 |
+| gpt_tiny / Windows / legacy-ef40a7ca114ffbd7 | 32 / 128 | fp32 | 187,882.71 ± unknown | 1.00 | amp | 181.41 ± unknown |
+
+Run reports: `results/runs/<run-id>/report.md`. Unknown historical provenance is disclosed in each report. Cross-environment ratios are not reported.
+
+[Registry, reports, dashboard startup, and CPU verification](docs/experiments.md) · [Verified performance case study](docs/performance_case_study.md)
+
+<!-- END GENERATED EXPERIMENT RESULTS -->

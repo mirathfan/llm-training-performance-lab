@@ -1,0 +1,54 @@
+{
+  "4886037d8724b81527cdbae879059ee1b0e9c655d52702f757ff54153753fba2": {
+    "environment": {
+      "cuda": "12.8",
+      "label": "Windows",
+      "os": "Microsoft Windows 11 Home Single Language, 10.0.26200",
+      "pytorch": "2.11.0+cu128"
+    },
+    "model": "gpt_tiny",
+    "notes": "Model/environment disclosed in the existing README benchmark and hardware sections; source rows include tiny model dimensions. Sequence sweeps vary positional embedding parameter counts. Run timestamp, Python version and Git state were not recorded."
+  },
+  "71487210a65763686c8fcf8631300a7b435c24ccdb11aedb289019828b57445f": {
+    "environment": {
+      "cuda": "13.0",
+      "label": "WSL2",
+      "os": "Ubuntu under WSL2",
+      "python": "3.12.3",
+      "pytorch": "2.12.1+cu130"
+    },
+    "model": "gpt_small",
+    "notes": "Environment/model disclosure from the existing README WSL2 validation and gpt_tiny optimization / hardware sections; bound to raw content SHA256. OS build details for WSL2, run date, resolved config, Git state and unrecorded stage metadata remain unknown. These fields are documentary evidence, not metadata captured by the legacy harness."
+  },
+  "9cc958e8271a4a9110913eb73c055b30116724d8bad4b5e300c8227749cf86cd": {
+    "environment": {
+      "cuda": "12.8",
+      "label": "Windows",
+      "os": "Microsoft Windows 11 Home Single Language, 10.0.26200",
+      "pytorch": "2.11.0+cu128"
+    },
+    "model": "gpt_tiny",
+    "notes": "Model/environment disclosed in the existing README benchmark and hardware sections; source rows include tiny model dimensions. Sequence sweeps vary positional embedding parameter counts. Run timestamp, Python version and Git state were not recorded."
+  },
+  "cbae540ab2c1552cf78e28df83265886f54c3e0b7806a5b960059eb83e8ec44d": {
+    "environment": {
+      "cuda": "12.8",
+      "label": "Windows",
+      "os": "Microsoft Windows 11 Home Single Language, 10.0.26200",
+      "python": null,
+      "pytorch": "2.11.0+cu128"
+    },
+    "model": "gpt_tiny",
+    "notes": "Environment/model disclosure from the existing README WSL2 validation and gpt_tiny optimization / hardware sections; bound to raw content SHA256. OS build details for WSL2, run date, resolved config, Git state and unrecorded stage metadata remain unknown. These fields are documentary evidence, not metadata captured by the legacy harness."
+  },
+  "ef40a7ca114ffbd78c7b4843e340ffe6ddf92ba5582f23953d23d51c3caf5242": {
+    "environment": {
+      "cuda": "12.8",
+      "label": "Windows",
+      "os": "Microsoft Windows 11 Home Single Language, 10.0.26200",
+      "pytorch": "2.11.0+cu128"
+    },
+    "model": "gpt_tiny",
+    "notes": "Model/environment disclosed in the existing README benchmark and hardware sections; source rows include tiny model dimensions. Sequence sweeps vary positional embedding parameter counts. Run timestamp, Python version and Git state were not recorded."
+  }
+}

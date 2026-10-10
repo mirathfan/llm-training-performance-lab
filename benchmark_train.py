@@ -25,6 +25,7 @@ from utils.logging_utils import save_json
 from utils.metrics import count_parameters
 from utils.profiler import reset_peak_memory, step_timer
 from utils.seed import set_seed
+from experiments.registry import begin_run, finish_run
 
 
 def parse_args() -> argparse.Namespace:
@@ -200,6 +201,8 @@ def make_plots(rows: List[Dict[str, Any]], results_dir: Path) -> None:
 
 def main() -> None:
     args = parse_args()
+    if args.benchmark_steps < 1 or args.warmup_steps < 0:
+        raise ValueError("Measurement steps must be positive and warmup steps nonnegative")
     base_config = resolve_config(load_config(args.config), args)
     if args.batch_sizes is None:
         args.batch_sizes = [int(base_config["batch_size"])]
@@ -211,6 +214,8 @@ def main() -> None:
     dataset = CharDataset(base_config["data_dir"], device=device)
     results_dir = Path(base_config.get("results_dir", "results"))
     results_dir.mkdir(parents=True, exist_ok=True)
+    registry_root = results_dir
+    results_dir = begin_run(registry_root, base_config, args, device, "sweep")
 
     rows = []
     for mode, batch_size, seq_len in itertools.product(args.modes, args.batch_sizes, args.seq_lens):
@@ -240,6 +245,11 @@ def main() -> None:
                 "device": str(device),
                 "device_name": get_device_name(device),
                 "error": str(exc),
+                "precision": precision,
+                "warmup_steps": args.warmup_steps,
+                "benchmark_steps": args.benchmark_steps,
+                "gradient_accumulation_steps": base_config.get("gradient_accumulation_steps", 1),
+                "model_config": {k: base_config.get(k) for k in ("vocab_size", "n_layer", "n_head", "n_embd", "dropout")},
             }
             if device.type == "cuda":
                 torch.cuda.empty_cache()
@@ -248,6 +258,7 @@ def main() -> None:
     save_json(rows, results_dir / "benchmark_results.json")
     write_csv(rows, results_dir / "benchmark_results.csv")
     make_plots(rows, results_dir)
+    finish_run(registry_root, results_dir, rows)
     print(f"Saved benchmark results under {results_dir}")
 
 

@@ -15,3 +15,7 @@ results/profiler/
 
 !results/.gitkeep
 !checkpoints/.gitkeep
+node_modules/
+dashboard/frontend/dist/
+.pytest_cache/
+.verification/

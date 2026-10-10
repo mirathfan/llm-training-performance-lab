@@ -1,0 +1,4 @@
+packages:
+  - dashboard/frontend
+allowBuilds:
+  esbuild: true

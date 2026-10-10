@@ -24,6 +24,7 @@ from utils.logging_utils import save_json
 from utils.metrics import count_parameters
 from utils.profiler import reset_peak_memory, step_timer
 from utils.seed import set_seed
+from experiments.registry import begin_run, finish_run
 
 
 def parse_args() -> argparse.Namespace:
@@ -185,6 +186,8 @@ def run_training_repeat(
         "seq_len": int(config["block_size"]),
         "warmup_steps": warmup_steps,
         "benchmark_steps": benchmark_steps,
+        "gradient_accumulation_steps": int(config.get("gradient_accumulation_steps", 1)),
+        "model_config": {k: config.get(k) for k in ("vocab_size", "n_layer", "n_head", "n_embd", "dropout")},
         "device": str(device),
         "device_name": get_device_name(device),
     }
@@ -270,6 +273,8 @@ def aggregate_rows(plan: List[Dict[str, Any]], raw_rows: List[Dict[str, Any]]) -
 
     for opt_config in plan:
         rows = [row for row in raw_rows if row["name"] == opt_config["name"]]
+        if not rows:
+            continue
         ok_rows = [row for row in rows if row["status"] == "ok"]
         failed_rows = [row for row in rows if row["status"] == "failed"]
         skipped_rows = [row for row in rows if row["status"] == "skipped"]
@@ -300,6 +305,7 @@ def aggregate_rows(plan: List[Dict[str, Any]], raw_rows: List[Dict[str, Any]]) -
             "device_name": first_row["device_name"],
             "repeats": len(rows),
             "successful_repeats": len(ok_rows),
+            "errors": [row.get("error", "") for row in rows if row.get("error")],
         }
 
         if ok_rows and len(ok_rows) == len(rows):
@@ -428,12 +434,16 @@ def main() -> None:
         raise ValueError("--repeats must be >= 1")
     if args.steps < 1:
         raise ValueError("--steps must be >= 1")
+    if args.warmup_steps < 0:
+        raise ValueError("--warmup-steps must be >= 0")
 
     config = resolve_config(load_config(args.config), args)
     device = get_device(config.get("device", "auto"))
     dataset = CharDataset(config["data_dir"], device=device)
     results_dir = Path(config.get("results_dir", "results"))
     results_dir.mkdir(parents=True, exist_ok=True)
+    registry_root = results_dir
+    results_dir = begin_run(registry_root, config, args, device, "optimizations")
 
     manual_ok, manual_error = check_attention_backend(config, device, "manual")
     sdpa_ok, sdpa_error = check_attention_backend(config, device, "sdpa")
@@ -475,11 +485,12 @@ def main() -> None:
     run_name = str(config.get("run_name") or config.get("model_name") or "run")
     save_result_set(raw_rows, summary_rows, results_dir, run_name)
 
-    # Also keep the original filenames as "latest run" outputs for compatibility.
+    # Original filenames now live inside the immutable, unique run directory.
     save_json(raw_rows, results_dir / "optimization_benchmark_raw.json")
     save_json(summary_rows, results_dir / "optimization_benchmark_summary.json")
     write_csv(summary_rows, results_dir / "optimization_benchmark_summary.csv")
     make_plots(summary_rows, results_dir)
+    finish_run(registry_root, results_dir, raw_rows)
 
 
 if __name__ == "__main__":
