@@ -81,4 +81,4 @@ The saved GPU name is RTX 3060 Laptop. Earlier documentation discloses Ubuntu/WS
 
 ### Hosted CI
 
-Pending the first portfolio push. Local passes above do not establish a GitHub Actions pass. This section will be updated with the observed workflow URL and conclusion after the push.
+Verified on GitHub after the normal push to `origin/main`: [CPU correctness and CLI, run 38016671548](https://github.com/mirathfan/llm-training-performance-lab/actions/runs/38016671548), commit `6616a1c3945e847149bb0a0a28dfd1cff4e2aaf0`, status **completed**, conclusion **success**. Both `cpu` and `frontend` jobs completed successfully. Hosted steps confirmed CPU tests, Python compilation, all six CLI help commands, frozen-lockfile installation and TypeScript/Vite build. This is separate from the Windows local passes above. This documentation-only follow-up records that observed result; the latest commit can be checked in the repository Actions tab.
