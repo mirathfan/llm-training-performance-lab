@@ -1,10 +1,12 @@
 # LLM Training Performance Lab
 
+[![CPU correctness and CLI](https://github.com/mirathfan/llm-training-performance-lab/actions/workflows/cpu.yml/badge.svg)](https://github.com/mirathfan/llm-training-performance-lab/actions/workflows/cpu.yml)
+
 A small GPT-style PyTorch training performance lab with MLPerf-inspired methodology, a reproducible experiment registry, and an interactive dashboard for saved results. It measures throughput, step latency and GPU memory on local hardware; it does not claim production-scale training, universal speedups or MLPerf compliance.
 
 **Strongest verified result: 3.02× steady-state speedup and 52.41% less peak allocated GPU memory** for the saved WSL2 `gpt_small` run on an NVIDIA GeForce RTX 3060 Laptop GPU. TF32 + SDPA + BF16 + fused AdamW + `torch.compile` reached **154,197.54 ± 587.16 tokens/s**, **26.56 ± 0.10 ms/step**, and **532.91 ± 1.23 MiB** across three successful repeats. The FP32 manual-attention baseline was 80.32 ± 0.34 ms/step and 1,119.76 ± 1.23 MiB at the same batch 16 / sequence 256 workload. Speedup uses the ratio of mean step latencies.
 
-[Dashboard setup and quick start](docs/experiments.md) · [Performance case study](docs/performance_case_study.md) · [Verification and CI evidence](docs/verification.md) · [Interview notes](docs/interview_notes.md)
+[Dashboard setup and quick start](docs/experiments.md) · [Performance case study](docs/performance_case_study.md) · [Verification and CI evidence](docs/verification.md) · [Interview notes](docs/interview_notes.md) · [Career notes](docs/career-notes.md)
 
 [![Real WSL2 gpt_small benchmark table and performance charts](docs/images/dashboard.png)](docs/images/dashboard.png)
 
@@ -238,31 +240,6 @@ This table documents the native Windows environment. The WSL2 software versions 
 | PyTorch version | 2.11.0+cu128 |
 | Driver version | 610.47 |
 | OS | Microsoft Windows 11 Home Single Language, version 10.0.26200, build 26200 |
-
-## NVIDIA Role Alignment
-
-This project maps directly to performance-focused AI engineering work:
-
-- Profiling AI training workloads with PyTorch Profiler
-- Measuring and improving training throughput
-- Using PyTorch training loops, optimizers, AMP, and `torch.compile`
-- Understanding CUDA-aware execution and CPU fallback behavior
-- Analyzing GPU memory allocation and reservation
-- Producing MLPerf-inspired benchmark artifacts with reproducible configs, logs, plots, and hardware disclosure
-
-## Resume Version
-
-### NVIDIA / ML Systems Version
-
-- Built a PyTorch LLM training performance benchmark for GPT-style Transformer workloads on an NVIDIA RTX 3060 Laptop GPU, measuring tokens/sec, step latency, GPU memory, validation loss, and perplexity.
-- Profiled and benchmarked FP32, TF32, SDPA, FP16, BF16, fused AdamW, and `torch.compile` training configurations, reaching a measured 3.02x `gpt_small` speedup under WSL2 with BF16 + fused AdamW + `torch.compile` while documenting memory and throughput tradeoffs.
-- Created MLPerf-inspired benchmark reports with hardware disclosure, JSON/CSV outputs, plots, profiler traces, and reproducible configs for GPU training analysis.
-
-### General AI Engineer Version
-
-- Built a reproducible GPT-style Transformer training lab in PyTorch with configurable model size, sequence length, batch size, AMP, checkpointing, profiling, and evaluation.
-- Developed end-to-end training, evaluation, and benchmarking scripts with Tiny Shakespeare data preparation, validation perplexity tracking, GPU memory reporting, and TensorBoard profiler traces.
-- Analyzed training performance tradeoffs across precision modes, batch sizes, and sequence lengths to connect LLM model design with practical deployment constraints.
 
 ## Limitations and Next Steps
 
